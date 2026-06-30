@@ -1,0 +1,353 @@
+{
+  "name": "Social Media Content Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "3a4b5c6d-0001-0001-0001-000000000001",
+      "name": "Schedule - Daily 8AM Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": "YOUR_GOOGLE_SHEET_ID",
+        "sheetName": "Content Calendar",
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "3a4b5c6d-0002-0002-0002-000000000002",
+      "name": "Google Sheets - Read Content Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json['Scheduled Date'] }}",
+              "rightValue": "={{ $now.format('YYYY-MM-DD') }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json['Status'] }}",
+              "rightValue": "Pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3a4b5c6d-0003-0003-0003-000000000003",
+      "name": "IF - Due Today and Pending",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json['Platform'] }}",
+              "rightValue": "LinkedIn",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3a4b5c6d-0004-0004-0004-000000000004",
+      "name": "IF - Platform is LinkedIn",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [950, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"author\": \"urn:li:person:YOUR_LINKEDIN_PERSON_ID\",\n  \"lifecycleState\": \"PUBLISHED\",\n  \"specificContent\": {\n    \"com.linkedin.ugc.ShareContent\": {\n      \"shareCommentary\": {\n        \"text\": \"{{ $json['Content'] }}\"\n      },\n      \"shareMediaCategory\": \"NONE\"\n    }\n  },\n  \"visibility\": {\n    \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\"\n  }\n}",
+        "options": {}
+      },
+      "id": "3a4b5c6d-0005-0005-0005-000000000005",
+      "name": "HTTP - Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1200, 120],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_LINKEDIN_CREDENTIAL_ID",
+          "name": "LinkedIn API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"{{ $json['Content'].substring(0, 280) }}\"\n}",
+        "options": {}
+      },
+      "id": "3a4b5c6d-0006-0006-0006-000000000006",
+      "name": "HTTP - Post to Twitter/X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1200, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_TWITTER_CREDENTIAL_ID",
+          "name": "Twitter API Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": "YOUR_GOOGLE_SHEET_ID",
+        "sheetName": "Content Calendar",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Posted",
+            "Posted At": "={{ $now.toISO() }}"
+          }
+        },
+        "where": {
+          "values": [
+            {
+              "lookupColumn": "ID",
+              "lookupValue": "={{ $json['ID'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3a4b5c6d-0007-0007-0007-000000000007",
+      "name": "Google Sheets - Mark as Posted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1450, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SENDER_EMAIL }}",
+        "toEmail": "={{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "=✅ Social Media Post Published — {{ $now.format('YYYY-MM-DD') }}",
+        "emailType": "html",
+        "message": "=<html><body><h2>Content Published Successfully</h2><p><strong>Platform:</strong> {{ $json['Platform'] }}</p><p><strong>Date:</strong> {{ $now.toISO() }}</p><p><strong>Content Preview:</strong></p><blockquote style='border-left:3px solid #ccc;padding-left:10px'>{{ $json['Content'].substring(0, 300) }}...</blockquote><p>Your content is now live!</p></body></html>",
+        "options": {}
+      },
+      "id": "3a4b5c6d-0008-0008-0008-000000000008",
+      "name": "Gmail - Send Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1700, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "result",
+              "value": "No posts due today"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3a4b5c6d-0009-0009-0009-000000000009",
+      "name": "No-Op - Nothing to Post",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [950, 450]
+    }
+  ],
+  "connections": {
+    "Schedule - Daily 8AM Check": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Read Content Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Read Content Calendar": {
+      "main": [
+        [
+          {
+            "node": "IF - Due Today and Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Due Today and Pending": {
+      "main": [
+        [
+          {
+            "node": "IF - Platform is LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No-Op - Nothing to Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Platform is LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - Post to Twitter/X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Mark as Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Post to Twitter/X": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Mark as Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Mark as Posted": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "automation" },
+    { "name": "social-media" },
+    { "name": "scheduling" },
+    { "name": "content-marketing" }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "n8nVersion": "1.68.0"
+  }
+}
